@@ -8,24 +8,28 @@ export const CAPABILITIES = {
   fs_write:    { label: "Filesystem write",    weight: 3, re: /\b(write|create|save|edit|patch|append|move|rename|copy|mkdir|touch|upload)\b.*\b(file|files|dir|directory|folder|path)\b|\bwrite_?file|edit_?file|create_?file|save_?to/i },
   fs_delete:   { label: "Filesystem delete",   weight: 4, re: /\b(delete|remove|rm|unlink|rmdir|truncate|wipe|purge)\b.*\b(file|files|dir|directory|folder|path)\b|\bdelete_?file|remove_?file|\brm\b/i },
   shell:       { label: "Shell / process execution", weight: 6, re: /\b(shell|bash|sh|zsh|cmd|powershell|pwsh|terminal|exec|execute|spawn|subprocess|run_?command|command\s*line|system\()\b|\b(run|execute)\b.*\b(command|script|binary|program|process)\b/i },
-  code_exec:   { label: "Code execution",      weight: 5, re: /\b(eval|execute|run)\b.*\b(code|python|javascript|js|node|snippet|script)\b|\bpython_?(exec|repl)|\bcode_?(interpreter|runner|exec)/i },
+  code_exec:   { label: "Code execution",      weight: 5, re: /\b(eval|execute|run)\b.*\b(code|python|javascript|js|node|snippet|script)\b|\b(python|node|js|javascript)[_\s]?(exec|repl)|\bcode_?(interpreter|runner|exec)/i },
   net_fetch:   { label: "Network fetch",       weight: 2, re: /\b(fetch|http|https|url|request|download|curl|wget|browse|crawl|scrape|api\s*call|webhook|endpoint)\b/i },
   net_send:    { label: "Network send / outbound data", weight: 4, re: /\b(post|put|send|upload|publish|submit|emit|transmit|sync|push)\b.*\b(http|url|server|remote|endpoint|api|cloud|webhook)\b|\bwebhook|\bsend_?(request|data|message)/i },
   browser:     { label: "Browser control",     weight: 4, re: /\b(browser|puppeteer|playwright|selenium|chrome|chromium|tab|navigate|click|screenshot|dom|cookie|cookies)\b/i },
   credentials: { label: "Credentials / secrets", weight: 6, re: /\b(password|passwd|secret|token|api[_\s-]?key|apikey|credential|credentials|private[_\s-]?key|ssh|\.ssh|id_rsa|keychain|wallet|seed\s*phrase|oauth|bearer|session\s*cookie|\.env\b|aws_access|access[_\s-]?key)\b/i },
   env:         { label: "Environment / config access", weight: 3, re: /\b(environment\s*variables?|env\s*vars?|process\.env|getenv|\benv\b|\.bashrc|\.profile|registry|config\s*file)\b/i },
-  database:    { label: "Database access",     weight: 3, re: /\b(sql|query|database|db|postgres|mysql|sqlite|mongo|redis|table|collection|insert|update|select)\b/i },
+  database:    { label: "Database access",     weight: 3, re: /\b(sql|query|database|db|postgres|mysql|sqlite|mongo|redis|table|collection)\b/i },
   db_write:    { label: "Database write",      weight: 4, re: /\b(insert|update|delete|drop|truncate|alter|upsert|write)\b.*\b(sql|table|database|db|row|record|collection|document)\b/i },
-  messaging:   { label: "Messaging / email",   weight: 4, re: /\b(email|e-mail|smtp|send\s*mail|slack|discord|telegram|sms|whatsapp|message|dm|notify|notification|chat\s*post)\b/i },
+  messaging:   { label: "Messaging / email",   weight: 4, re: /\b(email|e-mail|smtp|send\s*mail|slack|discord|telegram|sms|whatsapp|send\s+message|direct\s+message|notify|notification|chat\s*post)\b/i },
   payments:    { label: "Payments / financial", weight: 6, re: /\b(payment|pay|charge|refund|invoice|stripe|paypal|transfer\s*funds|wallet|crypto|bank|card|purchase|order)\b/i },
   cloud:       { label: "Cloud / infrastructure", weight: 5, re: /\b(aws|gcp|azure|kubernetes|k8s|kubectl|docker|terraform|ec2|s3|lambda|iam|deploy|provision|cluster|vm|instance)\b/i },
   clipboard:   { label: "Clipboard / input devices", weight: 3, re: /\b(clipboard|keyboard|keystroke|mouse|type\s*text|screen\s*capture|screenshot)\b/i },
-  destructive: { label: "Destructive / irreversible", weight: 4, re: /\b(delete|destroy|drop|wipe|purge|format|reset|overwrite|force|irreversible|permanent(ly)?|rm\s*-rf|shred)\b/i },
+  destructive: { label: "Destructive / irreversible", weight: 4, re: /\b(delete|destroy|drop|wipe|purge|format\s+(disk|drive)|reset\s+(database|device)|overwrite|irreversible|permanent(ly)?|rm\s*-rf|shred)\b/i },
   memory:      { label: "Persistent memory / notes", weight: 1, re: /\b(memory|remember|memorize|persist|store\s*note|knowledge\s*base|save\s*context)\b/i },
 };
 
 /** Combinations that together enable a class of attack. Each adds points and an explanation. */
 export const COMBOS = [
+  { caps: ["memory", "net_send"], severity: "high", points: 20, why: "Stored context can be sent outbound." },
+  { caps: ["code_exec", "credentials"], severity: "high", points: 25, why: "Executable code can consume or expose credentials." },
+  { caps: ["shell", "credentials"], severity: "high", points: 25, why: "Shell execution can consume or expose credentials." },
+  { caps: ["env", "net_send"], severity: "high", points: 20, why: "Environment data can be sent outbound." },
   { caps: ["fs_read", "net_send"], severity: "high", points: 25, why: "Reads local files and can send data out: a classic exfiltration path if a prompt injection steers the agent." },
   { caps: ["fs_read", "net_fetch"], severity: "medium", points: 10, why: "Reads local files and reaches the network: file contents can leak through crafted URLs (query strings, DNS)." },
   { caps: ["credentials", "net_fetch"], severity: "high", points: 30, why: "Handles secrets and talks to the network: credentials can be exfiltrated." },
@@ -57,13 +61,20 @@ export const INJECTION_PATTERNS = [
   { code: "parameter-smuggling", severity: "medium", re: /\b(pass|include|add|set)\b.{0,40}\b(contents?|value|text)\b.{0,30}\bof\b.{0,30}\b(file|conversation|context|system\s*prompt|previous\s*messages|other\s*tools?)\b.{0,40}\b(as|in|into|to)\b.{0,20}\b(parameter|argument|field|input)\b/i, why: "Instructs the model to smuggle other data into this tool's parameters." },
 ];
 
+const normalize = (s) => s.normalize("NFKC").replace(/[\u200B-\u200D\u2060\uFEFF\u00AD]/g, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]/g, " ").replace(/\s+/g, " ");
 const text = (tool) => {
-  const props = tool.inputSchema?.properties || tool.input_schema?.properties || tool.parameters?.properties || {};
-  const params = Object.entries(props).map(([k, v]) => `${k} ${v?.description || ""} ${v?.title || ""}`).join(" ");
-  return { desc: `${tool.name || ""} ${tool.description || ""}`, params, all: `${tool.name || ""} ${tool.description || ""} ${params}`, paramNames: Object.keys(props) };
+  const schema = tool.inputSchema || tool.input_schema || tool.parameters || {};
+  const props = schema.properties || {};
+  const strings = [];
+  const walk = (v) => { if (typeof v === "string") strings.push(v); else if (v && typeof v === "object") for (const [k, x] of Object.entries(v)) { if (["$schema", "$id", "$ref"].includes(k)) continue; strings.push(k); walk(x); } };
+  walk(tool);
+  const raw = strings.join(" ");
+  return { raw, all: normalize(raw), paramNames: Object.keys(props), schema };
 };
 
 export function classifyTool(tool) {
+  const serialized = JSON.stringify(tool);
+  if (!tool || typeof tool.name !== "string" || serialized.length > 65536) throw new Error("Invalid or oversized tool definition (limit 64 KiB)");
   const t = text(tool);
   const capabilities = [];
   for (const [id, cap] of Object.entries(CAPABILITIES)) {
@@ -78,15 +89,23 @@ export function classifyTool(tool) {
 
   const injection = [];
   for (const pat of INJECTION_PATTERNS) {
-    const m = t.desc.match(pat.re) || t.params.match(pat.re);
+    const m = t.raw.match(pat.re) || t.all.match(pat.re);
     if (m) injection.push({ code: pat.code, severity: pat.severity, why: pat.why, evidence: m[0].replace(/[\u200B\u200C\u200D\u2060\uFEFF\u00AD\u202A-\u202E\u2066-\u2069]/g, "?").slice(0, 100) });
   }
   const descLen = (tool.description || "").length;
   if (descLen > 1500) injection.push({ code: "oversized-description", severity: "low", why: `Description is ${descLen} chars; long descriptions are where hidden instructions live.`, evidence: `${descLen} chars` });
   if (!tool.description) injection.push({ code: "no-description", severity: "low", why: "Undocumented tool - the model (and you) cannot judge what it does.", evidence: "" });
 
-  const hasConfirm = /\b(confirm|dry_?run|dryRun|force|yes|approve)\b/i.test(p);
-  return { name: tool.name, description: tool.description || "", capabilities, injection, hasConfirmGate: hasConfirm, paramCount: t.paramNames.length };
+  if (JSON.stringify(t.schema).length > 16000) injection.push({ code: "oversized-schema", severity: "medium", why: "Argument schema exceeds 16,000 characters.", evidence: "schema size" });
+  if (/[a-z][\u0400-\u04ff]|[\u0400-\u04ff][a-z]/i.test(t.raw)) injection.push({ code: "mixed-script", severity: "medium", why: "Mixed Latin/Cyrillic text may disguise instructions with homoglyphs.", evidence: "mixed scripts" });
+  const annotations = tool.annotations || {};
+  const addCap = (id, evidence) => { if (!capabilities.some(c => c.id === id)) capabilities.push({ id, label: CAPABILITIES[id].label, weight: CAPABILITIES[id].weight, evidence }); };
+  if (annotations.destructiveHint === true) addCap("destructive", "annotations.destructiveHint=true (untrusted)");
+  if (annotations.openWorldHint === true) injection.push({ code: "open-world-hint", severity: "low", why: "Server declares interaction with external entities (untrusted hint).", evidence: "openWorldHint=true" });
+  if ((annotations.readOnlyHint === true && capabilities.some(c => ["shell", "code_exec", "fs_write", "fs_delete", "db_write", "destructive", "payments"].includes(c.id))) || (annotations.destructiveHint === false && capabilities.some(c => ["fs_delete", "destructive"].includes(c.id)))) injection.push({ code: "annotation-conflict", severity: "high", why: "Safety hints conflict with detected capabilities; hints cannot enforce safety.", evidence: "annotations" });
+  // A schema cannot establish that confirmation is enforced. Never discount risk for it.
+  return { name: tool.name, description: tool.description || "", definition: tool, capabilities, injection, hasConfirmGate: false, paramCount: t.paramNames.length };
+
 }
 
 /** Score 0-100 for a set of classified tools plus server-config findings. Higher = riskier. Explains itself. */

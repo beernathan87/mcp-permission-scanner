@@ -22,12 +22,17 @@ Options:
   --fail-on <level>  exit 2 if any server reaches this level (low|medium|high|critical)
 `;
 
+try {
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: { config: { type: "string" }, tools: { type: "string" }, server: { type: "string" }, "no-live": { type: "boolean", default: false }, json: { type: "boolean", default: false }, snapshot: { type: "string" }, timeout: { type: "string" }, "fail-on": { type: "string" }, help: { type: "boolean", short: "h", default: false } },
 });
 if (values.help) { console.log(HELP); process.exit(0); }
 
+const order = ["low", "medium", "high", "critical"];
+if (values["fail-on"] && !order.includes(values["fail-on"])) throw new Error();
+if (values.timeout !== undefined && (!/^\d+$/.test(values.timeout) || Number(values.timeout) < 1 || Number(values.timeout) > 300000)) throw new Error();
+if (positionals.length && positionals[0] !== "diff") throw new Error();
 if (positionals[0] === "diff") {
   const [, a, b] = positionals;
   if (!a || !b) { console.error("usage: mcp-scan diff <before.json> <after.json>"); process.exit(1); }
@@ -42,7 +47,7 @@ if (values.tools) {
 } else {
   let servers = [];
   if (values.config) servers = parseConfig(values.config, "config");
-  else for (const c of knownConfigPaths()) { try { servers.push(...parseConfig(c.path, c.client)); } catch (e) { console.error(`skip ${c.path}: ${e.message}`); } }
+  else for (const c of knownConfigPaths()) { try { servers.push(...parseConfig(c.path, c.client)); } catch (e) { console.error("Skipped unreadable or invalid MCP config"); process.exitCode = 1; } }
   if (values.server) servers = servers.filter((s) => s.name === values.server || s.name.startsWith(values.server + " ("));
   if (!servers.length) { console.error("No MCP servers found. Use --config <file> or --tools <file>."); process.exit(1); }
   if (!values.json) console.error(`Scanning ${servers.length} server(s)${values["no-live"] ? " (config only)" : ""}...`);
@@ -51,5 +56,7 @@ if (values.tools) {
 
 if (values.snapshot) writeFileSync(values.snapshot, JSON.stringify(toSnapshot(scan), null, 2));
 console.log(values.json ? JSON.stringify(scan, null, 2) : toMarkdown(scan));
-const order = ["low", "medium", "high", "critical"];
+if (scan.servers.some(s => s.enumerated === false)) process.exit(1);
 if (values["fail-on"] && scan.servers.some((s) => order.indexOf(s.risk.level) >= order.indexOf(values["fail-on"]))) process.exit(2);
+
+} catch { console.error("Scan failed: invalid arguments, input or output file. Use --help."); process.exitCode = 1; }

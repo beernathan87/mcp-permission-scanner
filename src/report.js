@@ -1,6 +1,9 @@
+export const canonical = (v) => Array.isArray(v) ? v.map(canonical) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonical(v[k])])) : v;
+export const markdownSafe = (v) => typeof v === "string" ? v.replace(/[\r\n\u0000-\u001f\u007f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, " ").replace(/[&<>|`\\*_[\]{}()!#]/g, c => `&#${c.charCodeAt(0)};`) : Array.isArray(v) ? v.map(markdownSafe) : v && typeof v === "object" ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, markdownSafe(x)])) : v;
 const badge = (level) => ({ critical: "CRITICAL", high: "HIGH", medium: "MEDIUM", low: "LOW" }[level]);
 
 export function toMarkdown(scan) {
+  scan = markdownSafe(scan);
   const L = [`# MCP permission scan`, "", `Scanned ${scan.servers.length} server(s) at ${scan.scannedAt}.`, ""];
   L.push("| Server | Transport | Tools | Risk | Score |", "|---|---|---|---|---|");
   for (const s of scan.servers) L.push(`| ${s.name} | ${s.transport} | ${s.enumerated === false ? "?" : s.toolCount} | ${badge(s.risk.level)} | ${s.risk.score} |`);
@@ -33,13 +36,13 @@ export function toMarkdown(scan) {
 
 /** Compact snapshot for diffing across versions. */
 export function toSnapshot(scan) {
-  return {
+  return canonical({
     version: 1, scannedAt: scan.scannedAt,
     servers: Object.fromEntries(scan.servers.map((s) => [s.name, {
-      launch: s.launch, transport: s.transport, score: s.risk.score, level: s.risk.level, serverInfo: s.serverInfo,
+      launch: s.launch, launchFingerprint: s.launchFingerprint, enumerated: s.enumerated, transport: s.transport, score: s.risk.score, level: s.risk.level, serverInfo: s.serverInfo,
       capabilities: [...new Set(s.tools.flatMap((t) => t.capabilities.map((c) => c.id)))].sort(),
       configFindings: s.configFindings.map((f) => f.code).sort(),
-      tools: Object.fromEntries(s.tools.map((t) => [t.name, { description: t.description, capabilities: t.capabilities.map((c) => c.id).sort(), injection: t.injection.map((i) => i.code).sort(), paramCount: t.paramCount }])),
+      tools: Object.fromEntries(s.tools.map((t) => [t.name, { definition: t.definition, description: t.description, capabilities: t.capabilities.map((c) => c.id).sort(), injection: t.injection.map((i) => i.code).sort(), paramCount: t.paramCount }])),
     }])),
-  };
+  });
 }

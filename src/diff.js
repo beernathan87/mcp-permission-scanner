@@ -1,6 +1,7 @@
+import { markdownSafe, canonical } from "./report.js";
 import { CAPABILITIES } from "./classify.js";
 
-const label = (id) => CAPABILITIES[id]?.label || id;
+const label = (id) => CAPABILITIES[id.replaceAll("&#95;", "_")]?.label || id;
 const setDiff = (a = [], b = []) => ({ added: b.filter((x) => !a.includes(x)), removed: a.filter((x) => !b.includes(x)) });
 
 /** Compare two snapshots (toSnapshot output). Returns a structured diff and a markdown rendering. */
@@ -8,31 +9,32 @@ export function diffSnapshots(before, after) {
   const names = new Set([...Object.keys(before.servers), ...Object.keys(after.servers)]);
   const servers = [];
   for (const n of names) {
-    const a = before.servers[n], b = after.servers[n];
+    const a = Object.hasOwn(before.servers, n) ? before.servers[n] : undefined, b = Object.hasOwn(after.servers, n) ? after.servers[n] : undefined;
     if (!a) { servers.push({ name: n, status: "added", score: b.score, level: b.level, capabilities: b.capabilities, tools: Object.keys(b.tools) }); continue; }
     if (!b) { servers.push({ name: n, status: "removed", score: a.score, level: a.level }); continue; }
     const caps = setDiff(a.capabilities, b.capabilities);
     const toolNames = setDiff(Object.keys(a.tools), Object.keys(b.tools));
     const changed = [];
     for (const t of Object.keys(b.tools)) {
-      if (!a.tools[t]) continue;
+      if (!Object.hasOwn(a.tools, t)) continue;
       const ta = a.tools[t], tb = b.tools[t];
       const c = setDiff(ta.capabilities, tb.capabilities), inj = setDiff(ta.injection, tb.injection);
-      const descChanged = ta.description !== tb.description;
+      const descChanged = ta.description !== tb.description || JSON.stringify(canonical(ta.definition)) !== JSON.stringify(canonical(tb.definition));
       if (c.added.length || c.removed.length || inj.added.length || inj.removed.length || descChanged || ta.paramCount !== tb.paramCount)
         changed.push({ tool: t, capabilities: c, injection: inj, descriptionChanged: descChanged, paramCount: [ta.paramCount, tb.paramCount] });
     }
     const cfg = setDiff(a.configFindings, b.configFindings);
-    const launchChanged = a.launch !== b.launch;
+    const launchChanged = a.launch !== b.launch || a.launchFingerprint !== b.launchFingerprint;
     const versionChanged = (a.serverInfo?.version || "") !== (b.serverInfo?.version || "");
-    const noChange = !caps.added.length && !caps.removed.length && !toolNames.added.length && !toolNames.removed.length && !changed.length && !cfg.added.length && !cfg.removed.length && !launchChanged && a.score === b.score;
+    const noChange = !caps.added.length && !caps.removed.length && !toolNames.added.length && !toolNames.removed.length && !changed.length && !cfg.added.length && !cfg.removed.length && !launchChanged && !versionChanged && a.enumerated === b.enumerated && a.score === b.score;
     servers.push({ name: n, status: noChange ? "unchanged" : "changed", scoreBefore: a.score, scoreAfter: b.score, levelBefore: a.level, levelAfter: b.level, capabilities: caps, tools: toolNames, changedTools: changed, configFindings: cfg, launchChanged, launch: [a.launch, b.launch], versionChanged, version: [a.serverInfo?.version, b.serverInfo?.version] });
   }
-  const riskIncreased = servers.some((s) => s.status === "added" ? s.score >= 45 : s.status === "changed" && (s.scoreAfter > s.scoreBefore || s.capabilities.added.length || s.changedTools.some((t) => t.injection.added.length)));
+  const riskIncreased = servers.some((s) => s.status === "added" ? s.score > 0 : s.status === "changed" && (s.scoreAfter > s.scoreBefore || s.capabilities.added.length || s.configFindings.added.length || s.tools.added.length || s.launchChanged || s.changedTools.some((t) => t.injection.added.length)));
   return { before: before.scannedAt, after: after.scannedAt, riskIncreased, servers, markdown: render({ before, after, servers, riskIncreased }) };
 }
 
-function render({ before, after, servers, riskIncreased }) {
+function render(data) {
+  const { before, after, servers, riskIncreased } = markdownSafe(data);
   const L = [`# MCP permission diff`, "", `${before.scannedAt} -> ${after.scannedAt}`, "", riskIncreased ? "**Risk increased.** Review the additions below before trusting the new version." : "No risk increase detected.", ""];
   for (const s of servers) {
     if (s.status === "unchanged") { L.push(`- ${s.name}: unchanged (${s.scoreAfter})`); continue; }

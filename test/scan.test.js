@@ -101,7 +101,7 @@ test("snapshot diff surfaces new tools, new capabilities and new injection findi
   assert.ok(s.capabilities.added.length >= 1);
   assert.ok(s.changedTools.find((t) => t.tool === "search").injection.added.includes("always-call"));
   assert.match(d.markdown, /Risk increased/);
-  assert.match(d.markdown, /NEW tools: upload_logs/);
+  assert.match(d.markdown, /NEW tools: upload&#95;logs/);
   const same = diffSnapshots(toSnapshot(v1), toSnapshot(v1));
   assert.equal(same.riskIncreased, false);
   assert.equal(same.servers[0].status, "unchanged");
