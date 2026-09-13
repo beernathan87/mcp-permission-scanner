@@ -47,7 +47,7 @@ Supported configs: `claude_desktop_config.json`, `~/.claude.json` (incl. per-pro
 
 **Do not live-scan untrusted local executables on your host.** Starting a stdio server executes arbitrary code with your user privileges, even when no tool is called. Use an isolated disposable VM for hostile servers, or obtain tool definitions and use `--tools`. This scanner is not a sandbox. See the [MCP security model](https://github.com/modelcontextprotocol/modelcontextprotocol/security).
 
-Only the SDK platform allowlist of environment variables plus explicitly configured `env` is inherited. HTTP/SSE requests reject redirects and cross-origin targets; configured authentication stays on the original origin. Limits are 4 MiB received per server, 512 tools, 100 pagination cursors, 256 characters per name, 16,000 per description, and 64 KiB per tool definition. Limit violations fail enumeration rather than producing a partial clean report. Resources/prompts are not enumerated. Timeout cancels requests; Windows cleanup uses `taskkill /T /F`. This is best-effort process cleanup, not containment: detached processes or a parent exiting before cleanup can escape; POSIX descendant cleanup is not guaranteed.
+Only the SDK platform allowlist of environment variables plus explicitly configured `env` is inherited. HTTP/SSE requests reject redirects and cross-origin targets; configured authentication stays on the original origin. Limits are 4 MiB received per server, 512 tools, 100 pagination cursors, 256 characters per name, 16,000 per description, and 64 KiB per tool definition. Limit violations fail enumeration rather than producing a partial clean report. Resources/prompts are not enumerated. Timeout cancels requests. Servers run in their own process group on POSIX (killed as a group) and are removed with `taskkill /T /F` on Windows, so a server's own children die with it; a server that deliberately double-forks into a new session, or the scanner being SIGKILLed mid-scan, can still leave processes behind. This is process cleanup, not containment.
 
 Launch details and peer errors are withheld from reports. A deterministic launch fingerprint detects configuration changes without printing arguments, URLs, environment or header values. Configured env/header values echoed verbatim by a peer are redacted; encoded/transformed secrets or other private data supplied by the peer cannot reliably be recognized. Treat reports as sensitive. Fingerprints are not password hashes and should not be published when configs contain low-entropy secrets.
 
@@ -65,5 +65,33 @@ npm test        # includes a live stdio enumeration of a deliberately poisoned f
 ## Not in v1 (on purpose)
 
 Hosted registry scanning, continuous monitoring, team policies, sandboxed dynamic analysis of tool behaviour, LLM-assisted description review. Those are the hosted layer; the CLI stays free.
+
+## Install
+
+```bash
+npm install -g mcp-permission-scanner    # Node 22.13+
+mcp-scan --help
+```
+
+## Production notes
+
+- **Verified 2026-09-13** from the packed tarball on Windows 11 and Linux (node:22 container): static scans are deterministic (identical JSON across runs) and exit `0/1/2` as documented; live enumeration of a real published server (`@modelcontextprotocol/server-filesystem` via `npx`, 14 tools, HIGH) and a real Streamable HTTP server (`server-everything`, 13 tools); a hostile corpus (never-answering, crashing, 6 MiB-flooding, grandchild-spawning and poisoned servers) fails enumeration with exit 1 and leaves **no processes behind** after repeated runs on both platforms; Codex `config.toml` and JSON client configs parse.
+- **Exit codes** are the contract for CI: `0` clean, `1` invalid input or any server that could not be enumerated (a partial report is never a clean report), `2` `--fail-on` threshold reached or diff review trigger.
+- **Heuristics, honestly:** capability detection is lexical (names, descriptions, schemas). Expect false positives on tools that *mention* shells or credentials and false negatives on undeclared or paraphrased behaviour; there is no labelled corpus behind a recall number. Use the score to decide what to review, not what to trust.
+- **Safe workflow for untrusted servers:** obtain the tool definitions (from the vendor, a registry, or a scan run inside a disposable VM) and use `--tools file.json` - it never executes anything. `--no-live` gives config-only findings without launching servers.
+- **Update:** `npm install -g mcp-permission-scanner@latest`. The tool keeps no state; snapshots are files you own.
+
+### Troubleshooting
+
+| Symptom | Cause / fix |
+|---|---|
+| `Could not enumerate tools` for an `npx` server on Windows | fixed in 0.1.0 (cross-spawn); on older builds use the full path to `npx.cmd` |
+| enumeration times out | raise `--timeout` (first `npx -y` run downloads the package) |
+| exit 1 with a report | at least one server was not enumerated - the report is incomplete by design |
+| a hostile server keeps running | it detached into a new session; kill it manually and scan its tool document with `--tools` instead |
+
+## Credits
+
+Created by Nathan Beer. Developed by Nathan Beer with AI-assisted engineering using Claude and ChatGPT. Third-party licenses: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Not affiliated with or endorsed by Anthropic, OpenAI, Cursor, Windsurf or the Model Context Protocol project.
 
 MIT.

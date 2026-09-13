@@ -1,4 +1,5 @@
-import { spawn, execFile } from "node:child_process";
+import { execFile } from "node:child_process";
+import crossSpawn from "cross-spawn";
 import { getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { JSONRPCMessageSchema } from "@modelcontextprotocol/sdk/types.js";
 
@@ -6,7 +7,8 @@ export const MAX_BYTES = 4 * 1024 * 1024;
 export class BoundedStdioTransport {
   constructor(server) { this.server = server; }
   async start() {
-    this.child = spawn(this.server.command, this.server.args || [], { env: { ...getDefaultEnvironment(), ...this.server.env }, stdio: ["pipe", "pipe", "ignore"], windowsHide: true });
+    // cross-spawn resolves `npx`/`uvx`/`.cmd` shims on Windows without a shell (Node refuses bare .cmd spawns).
+    this.child = crossSpawn(this.server.command, this.server.args || [], { env: { ...getDefaultEnvironment(), ...this.server.env }, stdio: ["pipe", "pipe", "ignore"], windowsHide: true, detached: process.platform !== "win32" }); // own process group on POSIX so the whole tree can be killed
     this.pid = this.child.pid;
     let bytes = 0, pending = "";
     this.child.stdout.setEncoding("utf8");
@@ -30,6 +32,7 @@ export class BoundedStdioTransport {
   async close() {
     if (!this.child || this.child.exitCode !== null) return;
     if (process.platform === "win32" && this.pid) await new Promise(resolve => execFile("taskkill", ["/PID", String(this.pid), "/T", "/F"], { windowsHide: true, timeout: 3000 }, () => resolve()));
+    else if (this.pid) { try { process.kill(-this.pid, "SIGKILL"); } catch { /* group already gone */ } }
     this.child.kill("SIGKILL");
     this.child.stdin.destroy(); this.child.stdout.destroy();
   }
