@@ -80,7 +80,9 @@ test("stdio does not inherit ambient secrets, times out and kills Windows descen
   delete process.env.SCANNER_REVIEW_SECRET;
   assert.equal(result.ok, false); assert.ok(Date.now() - start < 5000);
   const pids = JSON.parse(readFileSync(file)); assert.equal(pids.secret, undefined);
-  assert.throws(() => process.kill(pids.pid, 0));
+  // POSIX: the killed server can linger as a zombie until Node reaps it; poll briefly instead of asserting instantly.
+  const gone = async (pid) => { for (let i = 0; i < 40; i++) { try { process.kill(pid, 0); } catch { return true; } await new Promise((r) => setTimeout(r, 50)); } return false; };
+  assert.ok(await gone(pids.pid), "server process still alive");
   if (process.platform === "win32") assert.throws(() => process.kill(pids.child, 0));
   else { try { process.kill(pids.child, "SIGKILL"); } catch {} }
 });
