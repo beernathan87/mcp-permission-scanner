@@ -25,5 +25,16 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "CHANGELOG.md"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beernathan87/mcp-permission-scanner.git"
+  },
+  "homepage": "https://github.com/beernathan87/mcp-permission-scanner#readme",
+  "bugs": {
+    "url": "https://github.com/beernathan87/mcp-permission-scanner/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

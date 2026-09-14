@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## 0.1.0 - 2026-09-14
 
 First release: capability + dangerous-combination + description-injection analysis for MCP servers (stdio and HTTP/SSE) and static tool documents, explainable risk score, snapshot diffs with CI exit codes, config discovery for Claude Desktop/Claude Code/Cursor/Windsurf/VS Code/Codex.
 
